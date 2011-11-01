@@ -1,0 +1,1 @@
+Obracaj¹ca siê piramida!
