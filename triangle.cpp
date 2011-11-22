@@ -45,6 +45,39 @@ void LookAt(GLFrame &frame, const M3DVector3f eye, const M3DVector3f at, const M
 	SetUpFrame(frame, eye, forward, up);
 }
 
+void drawPyramid() {
+	//Podstawa piramidy
+	glBegin(GL_QUADS);
+		glVertexAttrib3f(GLT_ATTRIBUTE_COLOR, 0, 0, 0);
+		glVertex3f(-0.5f, -0.5f, 0.0f);
+		glVertex3f(0.5f, -0.5f, 0.0f);
+		glVertex3f(0.5f, 0.5f, 0.0f);
+		glVertex3f(-0.5f, 0.5f, 0.0f);
+	glEnd();
+
+	//œciany piramidy
+	glBegin(GL_TRIANGLES);
+		glVertexAttrib3f(GLT_ATTRIBUTE_COLOR, 1.0f, 0.0f, 0.0f);
+		glVertex3f(0.0f, 0.0f, 1.0f);
+		glVertex3f(-0.5f, -0.5f, 0.0f);
+		glVertex3f(0.5f, -0.5f, 0.0f);
+
+		glVertexAttrib3f(GLT_ATTRIBUTE_COLOR, 1.0f, 1.0f, 0.0f);
+		glVertex3f(0.0f, 0.0f, 1.0f);
+		glVertex3f(0.5f, -0.5f, 0.0f);
+		glVertex3f(0.5f, 0.5f, 0.0f);
+
+		glVertexAttrib3f(GLT_ATTRIBUTE_COLOR, 0.0f, 1.0f, 0.0f);
+		glVertex3f(0.0f, 0.0f, 1.0f);
+		glVertex3f(0.5f, 0.5f, 0.0f);
+		glVertex3f(-0.5f, 0.5f, 0.0f);
+
+		glVertexAttrib3f(GLT_ATTRIBUTE_COLOR, 0.0f, 0.0f, 1.0f);
+		glVertex3f(0.0f, 0.0f, 1.0f);
+		glVertex3f(-0.5f, 0.5f, 0.0f);
+		glVertex3f(-0.5f, -0.5f, 0.0f);
+	glEnd();
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 // Window has changed size, or has just been created. In either case, we need
@@ -101,9 +134,9 @@ void RenderScene(void) {
 	
 	float angle = timer.GetElapsedSeconds() * M_PI / 3;
 
-	posVector[0] = 3.4f * cos(angle);
-	posVector[1] = 3.0f * sin(angle);
-	posVector[2] = 2.5f;
+	posVector[0] = 6.4f * cos(angle);
+	posVector[1] = 6.0f * sin(angle);
+	posVector[2] = 4.5f;
 
 	LookAt(cameraFrame, posVector, forVector, upVector);
 	cameraFrame.GetCameraMatrix(matrixCamera);
@@ -112,39 +145,43 @@ void RenderScene(void) {
 	glUniformMatrix4fv(MVPMatrixLocation,1,GL_FALSE,matrixVP);
 
     glUseProgram(shader);
-
-	//Podstawa piramidy
-	glBegin(GL_QUADS);
+	
+	//siatka 20x20
+	glBegin(GL_LINES);
 		glVertexAttrib3f(GLT_ATTRIBUTE_COLOR, 0, 0, 0);
-		glVertex3f(-0.5f, -0.5f, 0.0f);
-		glVertex3f(0.5f, -0.5f, 0.0f);
-		glVertex3f(0.5f, 0.5f, 0.0f);
-		glVertex3f(-0.5f, 0.5f, 0.0f);
-	glEnd();
-
-	//œciany piramidy
-	glBegin(GL_TRIANGLES);
-		glVertexAttrib3f(GLT_ATTRIBUTE_COLOR, 1.0f, 0.0f, 0.0f);
-		glVertex3f(0.0f, 0.0f, 1.0f);
-		glVertex3f(-0.5f, -0.5f, 0.0f);
-		glVertex3f(0.5f, -0.5f, 0.0f);
-
-		glVertexAttrib3f(GLT_ATTRIBUTE_COLOR, 1.0f, 1.0f, 0.0f);
-		glVertex3f(0.0f, 0.0f, 1.0f);
-		glVertex3f(0.5f, -0.5f, 0.0f);
-		glVertex3f(0.5f, 0.5f, 0.0f);
-
-		glVertexAttrib3f(GLT_ATTRIBUTE_COLOR, 0.0f, 1.0f, 0.0f);
-		glVertex3f(0.0f, 0.0f, 1.0f);
-		glVertex3f(0.5f, 0.5f, 0.0f);
-		glVertex3f(-0.5f, 0.5f, 0.0f);
-
-		glVertexAttrib3f(GLT_ATTRIBUTE_COLOR, 0.0f, 0.0f, 1.0f);
-		glVertex3f(0.0f, 0.0f, 1.0f);
-		glVertex3f(-0.5f, 0.5f, 0.0f);
-		glVertex3f(-0.5f, -0.5f, 0.0f);
+		for(int i = 0; i <= 20; ++i) {
+			glVertex3f(-10.f, -10.f + (float)i, 0.f);
+			glVertex3f(10.f, -10.f + (float)i, 0.f);	
+			glVertex3f(-10.f + (float)i, -10.f, 0.f);
+			glVertex3f(-10.f + (float)i, 10.f, 0.f);
+		}
 	glEnd();
 	
+	GLShaderManager
+
+	//przesuniêcie priamidy
+	M3DMatrix44f matrixM;
+	m3dTranslationMatrix44(matrixM, 1.f, 1.0f, 0.f);
+	
+	M3DMatrix44f matrixMVP;
+	m3dMatrixMultiply44(matrixMVP, matrixVP, matrixM);
+	glUniformMatrix4fv(MVPMatrixLocation,1,GL_FALSE,matrixMVP);
+    
+	//Rysowanie Piramidy
+	drawPyramid();
+	
+	//kolejne przesuniêcie i obrót
+	M3DMatrix44f matrixT;
+	m3dTranslationMatrix44(matrixT, 1.0f, -2.0f, 0.f);
+	M3DMatrix44f matrixR;
+	m3dRotationMatrix44(matrixR, -10*angle, 0.f, 0.f, 1.f);
+	m3dMatrixMultiply44(matrixM, matrixT, matrixR);
+	m3dMatrixMultiply44(matrixMVP, matrixVP, matrixM);
+	glUniformMatrix4fv(MVPMatrixLocation,1,GL_FALSE,matrixMVP);
+
+	//rysowanie drugiej piramidy
+	drawPyramid();
+
     // Perform the buffer swap to display back buffer
     glutSwapBuffers();
 
