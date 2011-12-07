@@ -7,7 +7,7 @@
 #include <StopWatch.h>
 #include <GLMatrixStack.h>
 #include <GLGeometryTransform.h>
-
+#include <vector>
 #ifdef __APPLE__
 #include <glut/glut.h>          // OS X version of GLUT
 #else
@@ -60,6 +60,93 @@ float attenuation2 = 0.0075f;
 M3DVector3f ambientLightColor = { 1.0f, 1.0f, 1.0f };
 //M3DVector3f ambientLightColor = { 0.1f, 0.1f, 0.1f };
 M3DVector3f specularColor = { 1.0f, 1.0f, 1.0f };
+
+GLuint vertex_buffer; //adres bufora wierzcho³ków
+GLuint faces_buffer; //adres bufroa wierzcho³ków
+int n_faces = 0; //ile œcian posiada obiekt
+
+void LoadVertices() {
+	FILE * fvertices=fopen("geode_vertices.dat","r");
+	
+	if(fvertices==NULL) {
+		fprintf(stderr,"cannot open vertices file for reading\n");
+		exit(-1);
+	}
+	char line[120];
+   
+	std::vector<float > vertices;
+	float x,y,z;
+	double norm;
+	int n_vertices = 0;
+	while(fgets(line,120,fvertices)!=NULL) {
+		sscanf(line,"%f %f %f",&x,&y,&z);
+		  
+		norm=x*x+y*y+z*z;
+		norm=sqrt(norm);
+		n_vertices++;
+		vertices.push_back(x);
+		vertices.push_back(y);
+		vertices.push_back(z);
+		vertices.push_back(1.0f);
+		vertices.push_back(x/norm);
+		vertices.push_back(y/norm);
+		vertices.push_back(z/norm);
+	}
+
+	fprintf(stderr,"nv = %u %u\n",n_vertices,vertices.size());
+
+	glGenBuffers(1,&vertex_buffer);
+	glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer);
+
+	glBufferData(GL_ARRAY_BUFFER,n_vertices*sizeof(float)*7,&vertices[0],GL_STATIC_DRAW);
+	if(glGetError()!=GL_NO_ERROR) {
+		fprintf(stderr,"error copying vertices\n");
+	}
+	
+	glVertexAttribPointer(GLT_ATTRIBUTE_VERTEX,4,GL_FLOAT,GL_FALSE,sizeof(float)*7,(const GLvoid *)0);
+
+	glVertexAttribPointer(GLT_ATTRIBUTE_NORMAL,3,GL_FLOAT,GL_FALSE, sizeof(float)*7,(const GLvoid *)(4*sizeof(float)) );
+
+	glEnableVertexAttribArray(GLT_ATTRIBUTE_VERTEX);
+	glEnableVertexAttribArray(GLT_ATTRIBUTE_NORMAL);
+}
+
+void LoadFaces() {
+	FILE *ffaces=fopen("geode_faces.dat","r");
+	if(ffaces==NULL) {
+		fprintf(stderr,"cannot open faces file for reading\n");
+		exit(-1);
+	}
+
+	char line[120];
+
+	std::vector<GLuint> faces;
+	GLuint  i,j,k;
+	while(fgets(line,120,ffaces)!=NULL) {
+		   
+		if(3!=sscanf(line,"%u %u %u",&i,&j,&k)){
+			fprintf(stderr,"error reading faces\n"); 
+			exit(-1);
+		}
+		//fprintf(stderr,"%u %u %u\n",i-1,j-1,k-1);
+		n_faces++;
+		faces.push_back(i-1);
+		faces.push_back(j-1);
+		faces.push_back(k-1);
+	}
+ 	fprintf(stderr,"nf = %u\n",n_faces);
+
+	glGenBuffers(1,&faces_buffer);
+	if(glGetError()!=GL_NO_ERROR) {
+		fprintf(stderr,"faces_buffer invalid\n");
+	}
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,faces_buffer);
+
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER,n_faces*sizeof(GLuint)*3,&faces[0],GL_STATIC_DRAW);
+	if(glGetError()!=GL_NO_ERROR) {
+		fprintf(stderr,"error copying faces\n");
+	}
+}
 
 
 void SetUpFrame(GLFrame &frame,const M3DVector3f origin, const M3DVector3f forward, const M3DVector3f up) {
@@ -201,6 +288,9 @@ void SetupRC() {
 		fprintf(stderr,"normal matrix could not be found\n");
 	}
 
+	LoadVertices();
+	LoadFaces();
+
 }
 
 void triangleFace(const M3DVector3f a, const M3DVector3f b, const M3DVector3f c) {
@@ -333,6 +423,16 @@ void RenderScene(void) {
 	glUniform3fv(shaderPositionLocation, 1, lightPos);
 	drawFloor();
 	glDisable(GL_POLYGON_OFFSET_FILL);
+	
+	//rysowanie kuli z bufora
+	modelViewMatrix.PushMatrix();
+	modelViewMatrix.Translate(0.f, 0.f, 4.f);
+	modelViewMatrix.Scale(1.5f, 1.5f, 1.5f);
+	glUniformMatrix4fv(gouraudMVPLocation, 1, GL_FALSE, geometryPipeline.GetModelViewProjectionMatrix());
+	glUniformMatrix4fv(gouraudMVLocation, 1, GL_FALSE, geometryPipeline.GetModelViewMatrix());
+	glUniformMatrix3fv(gouraudNormalMatrixLocation, 1, GL_FALSE, geometryPipeline.GetNormalMatrix());
+	glDrawElements(GL_TRIANGLES,3*n_faces,GL_UNSIGNED_INT,0);
+	modelViewMatrix.PopMatrix();
 	
 	//-----	
 	glUniformMatrix4fv(gouraudMVPLocation, 1, GL_FALSE, geometryPipeline.GetModelViewProjectionMatrix());
