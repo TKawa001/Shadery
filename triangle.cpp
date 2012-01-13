@@ -19,8 +19,20 @@ static const float M_PI = 3.14159265358979323846;
 
 GLuint shader;
 GLuint gouraudShader;
+GLuint textureShader;
+
+//pass_thru_shader
 GLuint MVPMatrixLocation;
 
+//textureShader
+GLint textureMVPLocation;
+GLint textureMVLocation;
+GLint textureNormalMatrixLocation;
+GLint textureLightPostion;
+GLint textureAmbientLocation;
+GLint textureDiffuseLocation;
+GLint textureSpecularLocation;
+GLint textureAlphaLocation;
 
 GLFrustum frustum;
 
@@ -34,6 +46,7 @@ M3DVector3f posVector;
 M3DVector3f forVector;
 CStopWatch timer;
 
+//gouard shader
 GLint shaderPositionLocation;
 GLint shaderColorLocation;
 GLint shaderAngleLocation;
@@ -65,6 +78,65 @@ GLuint vertex_buffer; //adres bufora wierzcho³ków
 GLuint faces_buffer; //adres bufroa wierzcho³ków
 int n_faces = 0; //ile œcian posiada obiekt
 
+//texture
+GLuint textureID;
+GLbyte *pBits;
+int nWidth, nHeight, nComponents;
+GLenum eFormat;
+GLint textureLocation;
+
+void CheckForErrors() {
+	GLenum err;
+	while((err = glGetError()) != GL_NO_ERROR) {
+		switch (err) {
+			case GL_INVALID_ENUM:
+				fprintf(stderr,"The enum argument is out of range.\n");
+				break;
+			case GL_INVALID_VALUE:
+				fprintf(stderr,"The numeric argument is out of range.\n");
+				break;
+			case GL_INVALID_OPERATION:
+				fprintf(stderr,"The operation is illegal in its current state.\n");
+				break;
+			case GL_OUT_OF_MEMORY:
+				fprintf(stderr,"Not enough memory is left to execute the commandn");
+				break;
+		}			
+	}
+}
+
+void LoadAndSetTexture() {
+	glActiveTexture(GL_TEXTURE0);
+	glGenTextures(1,&textureID);
+	glBindTexture(GL_TEXTURE_2D, textureID);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	pBits = gltReadTGABits("flash.tga", &nWidth, &nHeight, &nComponents, &eFormat);
+	if(pBits == NULL) {
+		fprintf(stderr,"Error reading texture\n");
+	}
+	glTexImage2D(GL_TEXTURE_2D, 0, nComponents, nWidth, nHeight, 0, eFormat, GL_UNSIGNED_BYTE, pBits);
+	textureLocation = glGetUniformLocation(textureShader, "texture0");
+	if(textureLocation == -1) {
+		fprintf(stderr,"uniform textureLocation could not be found in textureShader \n");
+	}
+	glUniform1i(textureLocation, 0);
+}
+
+void GLcheck() {
+	fprintf(stdout,"Vendor: ");
+	fprintf(stdout,(const char *)glGetString(GL_VENDOR));
+	fprintf(stdout,"\nRenderer: ");
+	fprintf(stdout,(const char *)glGetString(GL_RENDERER));
+	fprintf(stdout,"\nOpenGL Version: ");
+	fprintf(stdout,(const char *)glGetString(GL_VERSION));
+	fprintf(stdout,"\nShading Language Version: ");
+	fprintf(stdout,(const char *)glGetString(GL_SHADING_LANGUAGE_VERSION));
+	fprintf(stdout,"\n\n");
+}
 void LoadVertices() {
 	FILE * fvertices=fopen("geode_vertices.dat","r");
 	
@@ -175,8 +247,6 @@ void ChangeSize(int w, int h) {
     glViewport(0, 0, w, h);
 
 	frustum.SetPerspective(45.0f, (float)w / (float)h, 0.1f, 1000.0f);
-
-	
 }
 
 
@@ -187,23 +257,81 @@ void ChangeSize(int w, int h) {
 void SetupRC() {
     // Blue background
     glClearColor(0.5f, 0.5f, 0.5f, 1.0f);
+	GLcheck();
 
-	shader = gltLoadShaderPairWithAttributes("pass_thru_shader.vp", "pass_thru_shader.fp", 2, GLT_ATTRIBUTE_VERTEX,
-		"vVertex", GLT_ATTRIBUTE_COLOR, "vColor");
+	glHint(GL_LINE_SMOOTH_HINT, GL_NICEST);
+	glHint(GL_POLYGON_SMOOTH_HINT, GL_NICEST);
+	glHint(GL_FRAGMENT_SHADER_DERIVATIVE_HINT, GL_NICEST);
+	CheckForErrors();
+
+	shader = gltLoadShaderPairWithAttributes("pass_thru_shader.vp", "pass_thru_shader.fp", 2, 
+			GLT_ATTRIBUTE_VERTEX, "vVertex", 
+			GLT_ATTRIBUTE_COLOR, "vColor");
+	
 	fprintf(stdout, "GLT_ATTRIBUTE_VERTEX : %d\nGLT_ATTRIBUTE_COLOR : %d \n", GLT_ATTRIBUTE_VERTEX, GLT_ATTRIBUTE_COLOR);
 
-    gouraudShader = gltLoadShaderPairWithAttributes("gouraud.vp", "gouraud.fp",
-            2, GLT_ATTRIBUTE_VERTEX, "vVertex", GLT_ATTRIBUTE_COLOR, "vColor");
-    fprintf(stdout, "GLT_ATTRIBUTE_VERTEX : %d\nGLT_ATTRIBUTE_COLOR : %d \n",
-            GLT_ATTRIBUTE_VERTEX, GLT_ATTRIBUTE_COLOR);
+    gouraudShader = gltLoadShaderPairWithAttributes("gouraud.vp", "gouraud.fp", 2, 
+			GLT_ATTRIBUTE_VERTEX, "vVertex",  
+			GLT_ATTRIBUTE_NORMAL, "vNormal");
 
+    fprintf(stdout, "GLT_ATTRIBUTE_VERTEX : %d\nGLT_ATTRIBUTE_COLOR : %d \n", GLT_ATTRIBUTE_VERTEX, GLT_ATTRIBUTE_COLOR);
+
+	textureShader = gltLoadShaderPairWithAttributes("shader.vp", "shader.fp", 4,
+            GLT_ATTRIBUTE_VERTEX, "vVertex",
+            GLT_ATTRIBUTE_COLOR, "vColor",
+            GLT_ATTRIBUTE_TEXTURE0, "texCoord0",
+            GLT_ATTRIBUTE_NORMAL, "vNormal");
+	
+	//shader unifroms
 	MVPMatrixLocation = glGetUniformLocation(shader, "MVPMatrix");
 
 	if(MVPMatrixLocation == -1) {
-		fprintf(stderr,"uniform MVPMatrix could not be found\n");
+		fprintf(stderr,"uniform MVPMatrix could not be found in shader\n");
 	}
 	
+	//textureShader Uniforms
+	textureMVPLocation = glGetUniformLocation(textureShader, "MVPMatrix");
+	if(textureMVPLocation == -1) {
+		fprintf(stderr,"uniform MVPMatrix could not be found in textureShader \n");
+	}
+
+	textureMVLocation = glGetUniformLocation(textureShader, "MVMatrix");
+	if(textureMVLocation == -1) {
+		fprintf(stderr,"uniform MVMatrix could not be found in textureShader \n");
+	}
+
+	textureNormalMatrixLocation = glGetUniformLocation(textureShader, "normalMatrix");
+	if(textureMVLocation == -1) {
+		fprintf(stderr,"uniform normalMatrix could not be found in textureShader \n");
+	}
+
+	textureLightPostion = glGetUniformLocation(textureShader, "lightPosition");
+	if(textureMVLocation == -1) {
+		fprintf(stderr,"uniform lightPosition could not be found in textureShader \n");
+	}
+
+	textureAmbientLocation = glGetUniformLocation(textureShader, "ambientColor");
+	if(textureMVLocation == -1) {
+		fprintf(stderr,"uniform ambientColor could not be found in textureShader \n");
+	}
+	
+	textureDiffuseLocation = glGetUniformLocation(textureShader, "diffuseColor");
+	if(textureMVLocation == -1) {
+		fprintf(stderr,"uniform diffuseColor could not be found in textureShader \n");
+	}
+	
+	textureSpecularLocation = glGetUniformLocation(textureShader, "specularColor");
+	if(textureMVLocation == -1) {
+		fprintf(stderr,"uniform specularColor could not be found in textureShader \n");
+	}
+	
+	textureAlphaLocation = glGetUniformLocation(textureShader, "alpha");
+	if(textureMVLocation == -1) {
+		fprintf(stderr,"uniform alpha could not be found in textureShader \n");
+	}
+
 	glEnable(GL_DEPTH_TEST);
+	glEnable(GL_TEXTURE_2D);
 
 	upVector[0] = 0.0f;
 	upVector[1] = 0.0f;
@@ -290,6 +418,7 @@ void SetupRC() {
 
 	LoadVertices();
 	LoadFaces();
+	LoadAndSetTexture();
 
 }
 
@@ -302,11 +431,59 @@ void triangleFace(const M3DVector3f a, const M3DVector3f b, const M3DVector3f c)
 
 	glVertexAttrib3fv(GLT_ATTRIBUTE_NORMAL, normal);
 
+	glVertexAttrib2f(GLT_ATTRIBUTE_TEXTURE0, 0.5f, 1.f);
 	glVertex3fv(a);
+	glVertexAttrib2f(GLT_ATTRIBUTE_TEXTURE0, 0.0f, 0.0f);
 	glVertex3fv(b);
+	glVertexAttrib2f(GLT_ATTRIBUTE_TEXTURE0, 1.f, 0.f);
 	glVertex3fv(c);
 }
 
+void drawTexturedPyramid() {
+	static const float specularExponent = 100.0f;
+	static const M3DVector3f diffuseColor = { 0.6f, 0.6f, 0.6f };
+	static const M3DVector3f ambientColor = { 0.6f, 0.6f, 0.6f };
+
+	static const M3DVector3f a = { 0.0f, 0.0f , 2.0f };
+	static const M3DVector3f b = { -1.0f, -1.0f , 0.0f };
+	static const M3DVector3f c = { 1.0f, -1.0f , 0.0f };
+	static const M3DVector3f d = { 1.0f, 1.0f , 0.0f };
+	static const M3DVector3f e = { -1.0f, 1.0f , 0.0f };
+
+	/*glUniform3fv(shaderColorLocation, 1, color);
+	glUniform1f(shaderAttenuation0Location, attenuation0);
+	glUniform1f(shaderAttenuation1Location, attenuation1);
+	glUniform1f(shaderAttenuation2Location, attenuation2);*/
+
+	glUniform4fv(textureAmbientLocation, 1, ambientColor);
+	glUniform4fv(textureDiffuseLocation, 1, diffuseColor);
+	glUniform4fv(textureSpecularLocation, 1, specularColor);
+	glUniform1f(textureAlphaLocation, 0.5f);
+
+	glBegin(GL_TRIANGLES);		
+		triangleFace(a, b, c);
+		triangleFace(a, c, d);
+		triangleFace(a, d, e);
+		triangleFace(a, e, b);
+	glEnd();
+
+	glBegin(GL_TRIANGLES);
+		glVertexAttrib2f(GLT_ATTRIBUTE_TEXTURE0, 0.f, 0.f);
+		glVertex3fv(b);
+		glVertexAttrib2f(GLT_ATTRIBUTE_TEXTURE0, 1.f, 0.0f);
+		glVertex3fv(c);
+		glVertexAttrib2f(GLT_ATTRIBUTE_TEXTURE0, 1.f, 1.f);
+		glVertex3fv(d);
+		//triangleFace(b, c, d);
+		glVertexAttrib2f(GLT_ATTRIBUTE_TEXTURE0, 1.f, 1.f);
+		glVertex3fv(d);
+		glVertexAttrib2f(GLT_ATTRIBUTE_TEXTURE0, 0.f, 1.f);
+		glVertex3fv(e);
+		glVertexAttrib2f(GLT_ATTRIBUTE_TEXTURE0, 0.f, 0.f);
+		glVertex3fv(b);
+		//triangleFace(d, e, b);
+	glEnd();
+}
 void drawPyramid() {
 	static const float specularExponent = 100.0f;
 	static const M3DVector3f diffuseColor = { 0.0f, 0.9f, 0.3f };
@@ -434,6 +611,23 @@ void RenderScene(void) {
 	glDrawElements(GL_TRIANGLES,3*n_faces,GL_UNSIGNED_INT,0);
 	modelViewMatrix.PopMatrix();
 	
+	//-----
+	glUseProgram(textureShader);
+
+	modelViewMatrix.PushMatrix();
+	modelViewMatrix.Translate(5.0f,0.0f, 0.0f);
+	glUniformMatrix4fv(textureMVPLocation, 1, GL_FALSE, geometryPipeline.GetModelViewProjectionMatrix());
+	glUniformMatrix4fv(textureMVLocation, 1, GL_FALSE, geometryPipeline.GetModelViewMatrix());
+	glUniformMatrix3fv(textureNormalMatrixLocation, 1, GL_FALSE, geometryPipeline.GetNormalMatrix());
+	m3dTransformVector3(lightPos, position, geometryPipeline.GetModelViewMatrix());
+	glUniform3fv(textureLightPostion, 1, lightPos);
+	//Rysowanie Nieruchomej Piramidy na œrodku
+	drawTexturedPyramid();
+	modelViewMatrix.PopMatrix();
+	
+
+	glUseProgram(gouraudShader);
+
 	//-----	
 	glUniformMatrix4fv(gouraudMVPLocation, 1, GL_FALSE, geometryPipeline.GetModelViewProjectionMatrix());
 	glUniformMatrix4fv(gouraudMVLocation, 1, GL_FALSE, geometryPipeline.GetModelViewMatrix());
@@ -463,26 +657,31 @@ void RenderScene(void) {
 	//wrócenie do stanu w którym jest przemno¿ona kamera 
 	modelViewMatrix.PopMatrix();
 						
-						//-----
+	//-----
+	glUseProgram(textureShader);
 	modelViewMatrix.PushMatrix();
 	modelViewMatrix.Translate(-4.0f, -1.0f, 0.f);
 	modelViewMatrix.PushMatrix();
 	modelViewMatrix.Rotate(-10*(angle*180/M_PI), 0.f, 0.f, 1.f);
-	glUniformMatrix4fv(gouraudMVPLocation,1,GL_FALSE,geometryPipeline.GetModelViewProjectionMatrix());
-	glUniformMatrix4fv(gouraudMVLocation, 1, GL_FALSE, geometryPipeline.GetModelViewMatrix());
-	glUniformMatrix3fv(gouraudNormalMatrixLocation, 1, GL_FALSE, geometryPipeline.GetNormalMatrix());
+	glUniformMatrix4fv(textureMVPLocation, 1, GL_FALSE, geometryPipeline.GetModelViewProjectionMatrix());
+	glUniformMatrix4fv(textureMVLocation, 1, GL_FALSE, geometryPipeline.GetModelViewMatrix());
+	glUniformMatrix3fv(textureNormalMatrixLocation, 1, GL_FALSE, geometryPipeline.GetNormalMatrix());
+	m3dTransformVector3(lightPos, position, geometryPipeline.GetModelViewMatrix());
+	glUniform3fv(textureLightPostion, 1, lightPos);
 	//rysowanie dolnej krêc¹cej siê piramidy
-	drawPyramid();
+	drawTexturedPyramid();
 						
 	modelViewMatrix.PopMatrix();
 	modelViewMatrix.Translate(0.f, 0.f, 4.0f);
 	modelViewMatrix.Rotate(180.f, 1.f, 0.f, 0.f);
 	modelViewMatrix.Rotate(-10*(angle*180/M_PI), 0.f, 0.f, 1.f);
-	glUniformMatrix4fv(gouraudMVPLocation,1,GL_FALSE,geometryPipeline.GetModelViewProjectionMatrix());
-	glUniformMatrix4fv(gouraudMVLocation, 1, GL_FALSE, geometryPipeline.GetModelViewMatrix());
-	glUniformMatrix3fv(gouraudNormalMatrixLocation, 1, GL_FALSE, geometryPipeline.GetNormalMatrix());
+	glUniformMatrix4fv(textureMVPLocation, 1, GL_FALSE, geometryPipeline.GetModelViewProjectionMatrix());
+	glUniformMatrix4fv(textureMVLocation, 1, GL_FALSE, geometryPipeline.GetModelViewMatrix());
+	glUniformMatrix3fv(textureNormalMatrixLocation, 1, GL_FALSE, geometryPipeline.GetNormalMatrix());
+	m3dTransformVector3(lightPos, position, geometryPipeline.GetModelViewMatrix());
+	glUniform3fv(textureLightPostion, 1, lightPos);
 	//rysowanie górnej krêc¹cej siê piramidy
-	drawPyramid();
+	drawTexturedPyramid();
 
 	//wrócenie do stanu w którym jest przemno¿ona kamera i przeskalowany œwiat
 	modelViewMatrix.PopMatrix();
@@ -502,11 +701,13 @@ void RenderScene(void) {
 	angle2 = angle2 + d;
 	modelViewMatrix.Translate(0.f, 0.f, -5.f);
 	modelViewMatrix.Scale(1.f, 1.f, 4.f);
-	glUniformMatrix4fv(gouraudMVPLocation,1,GL_FALSE,geometryPipeline.GetModelViewProjectionMatrix());
-	glUniformMatrix4fv(gouraudMVLocation, 1, GL_FALSE, geometryPipeline.GetModelViewMatrix());
-	glUniformMatrix3fv(gouraudNormalMatrixLocation, 1, GL_FALSE, geometryPipeline.GetNormalMatrix());
+	glUniformMatrix4fv(textureMVPLocation, 1, GL_FALSE, geometryPipeline.GetModelViewProjectionMatrix());
+	glUniformMatrix4fv(textureMVLocation, 1, GL_FALSE, geometryPipeline.GetModelViewMatrix());
+	glUniformMatrix3fv(textureNormalMatrixLocation, 1, GL_FALSE, geometryPipeline.GetNormalMatrix());
+	m3dTransformVector3(lightPos, position, geometryPipeline.GetModelViewMatrix());
+	glUniform3fv(textureLightPostion, 1, lightPos);
 	//rysowanie piramidy przeskalowanej w górê)
-	drawPyramid();
+	drawTexturedPyramid();
 	
 	//wrócenie do stanu w którym jest przemno¿ona kamera i przeskalowany œwiat
 	modelViewMatrix.PopMatrix();
@@ -523,26 +724,31 @@ void RenderScene(void) {
 		d2 = d2 * (-1);
 	}
 	x = x + d2;
-	glUniformMatrix4fv(gouraudMVPLocation,1,GL_FALSE,geometryPipeline.GetModelViewProjectionMatrix());
-	glUniformMatrix4fv(gouraudMVLocation, 1, GL_FALSE, geometryPipeline.GetModelViewMatrix());
-	glUniformMatrix3fv(gouraudNormalMatrixLocation, 1, GL_FALSE, geometryPipeline.GetNormalMatrix());
+	glUniformMatrix4fv(textureMVPLocation, 1, GL_FALSE, geometryPipeline.GetModelViewProjectionMatrix());
+	glUniformMatrix4fv(textureMVLocation, 1, GL_FALSE, geometryPipeline.GetModelViewMatrix());
+	glUniformMatrix3fv(textureNormalMatrixLocation, 1, GL_FALSE, geometryPipeline.GetNormalMatrix());
+	m3dTransformVector3(lightPos, position, geometryPipeline.GetModelViewMatrix());
+	glUniform3fv(textureLightPostion, 1, lightPos);
 	//rysowanie poruszaj¹cej siê piramidy
-	drawPyramid();
+	drawTexturedPyramid();
 
 	//wrócenie do stanu w którym jest przemno¿ona kamera i przeskalowany œwiat
 	modelViewMatrix.PopMatrix();
 
 	//-----
+	
 	modelViewMatrix.PushMatrix();
 	modelViewMatrix.Translate(5.f,-5.f,1.f);
 	modelViewMatrix.Rotate(90.f, 1.f, 0.f, 0.f);
 	modelViewMatrix.Rotate(-5*(angle*180/M_PI), 0.f, 1.f, 0.f);
 	modelViewMatrix.Translate(0.f, 0.f, -3.f);
-	glUniformMatrix4fv(gouraudMVPLocation,1,GL_FALSE,geometryPipeline.GetModelViewProjectionMatrix());
-	glUniformMatrix4fv(gouraudMVLocation, 1, GL_FALSE, geometryPipeline.GetModelViewMatrix());
-	glUniformMatrix3fv(gouraudNormalMatrixLocation, 1, GL_FALSE, geometryPipeline.GetNormalMatrix());
+	glUniformMatrix4fv(textureMVPLocation, 1, GL_FALSE, geometryPipeline.GetModelViewProjectionMatrix());
+	glUniformMatrix4fv(textureMVLocation, 1, GL_FALSE, geometryPipeline.GetModelViewMatrix());
+	glUniformMatrix3fv(textureNormalMatrixLocation, 1, GL_FALSE, geometryPipeline.GetNormalMatrix());
+	m3dTransformVector3(lightPos, position, geometryPipeline.GetModelViewMatrix());
+	glUniform3fv(textureLightPostion, 1, lightPos);
 	//rysowanie krêc¹cej siê obróconej piramidy 
-	drawPyramid();
+	drawTexturedPyramid();
 
 	//wyczszczenie stosu
 	modelViewMatrix.PopMatrix();
